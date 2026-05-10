@@ -1,7 +1,7 @@
 {
   "name": "nexus-relay",
-  "version": "2.0.0",
-  "description": "NexusClaw Bridge \u2014 HTTP polling relay for Ghost Operator mode",
+  "version": "4.0.0",
+  "description": "NexusClaw Bridge — Full Duplex HTTP relay for Ghost Operator mode",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
