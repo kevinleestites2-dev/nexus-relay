@@ -61,3 +61,4 @@ app.get('/ping', (req, res) => res.json({ ok: true, queue: commandQueue.length }
 app.listen(PORT, () => {
   console.log('Nexus Relay v2 (HTTP polling) running on port ' + PORT);
 });
+// v2.1 — forced redeploy Sun May 10 15:53:03 UTC 2026
