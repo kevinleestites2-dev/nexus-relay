@@ -1,100 +1,90 @@
 #!/usr/bin/env python3
 """
-NexusClaw Phone Client v3
-Polls Nexus Relay for commands, executes them, returns results.
-Run in Termux: python3 phone_client.py
+phone_client.py — NexusClaw Relay Client v4.0.0
+Full Duplex Ghost Operator mode.
+Runs in Termux. No inbound tunnel needed.
+Flow: GET /poll -> execute command -> POST /result
 """
 
-import time
-import json
-import subprocess
-import urllib.request
-import urllib.error
+import subprocess, time, json, os, sys
+import urllib.request, urllib.error
 
-RELAY_URL = "https://nexus-relay-production.up.railway.app"
-POLL_INTERVAL = 3  # seconds between polls
+RELAY   = os.environ.get("RELAY_URL", "https://nexus-relay-production.up.railway.app")
+SECRET  = os.environ.get("SECRET", "pantheon_prime")
+POLL_MS = int(os.environ.get("POLL_INTERVAL_MS", "2000"))
 
-def poll():
+def request(method, path, data=None):
+    url = RELAY + path
+    body = json.dumps(data).encode() if data else None
+    req = urllib.request.Request(url, data=body, method=method)
+    req.add_header("X-Secret", SECRET)
+    if body:
+        req.add_header("Content-Type", "application/json")
     try:
-        req = urllib.request.Request(f"{RELAY_URL}/poll")
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read())
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return {"error": str(e), "code": e.code}
     except Exception as e:
-        print(f"[POLL ERROR] {e}")
-        return None
-
-def post_result(data):
-    try:
-        payload = json.dumps(data).encode()
-        req = urllib.request.Request(
-            f"{RELAY_URL}/result",
-            data=payload,
-            method="POST",
-            headers={"Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read())
-    except Exception as e:
-        print(f"[RESULT ERROR] {e}")
-        return None
+        return {"error": str(e)}
 
 def execute(cmd):
-    action = cmd.get("action", "none")
-    payload = cmd.get("payload", "")
-    _id = cmd.get("_id", "?")
-
-    print(f"[CMD] {action} | {str(payload)[:60]}")
-
-    # --- Shell command ---
-    if action == "shell":
+    t = cmd.get("type", "shell")
+    if t == "shell":
+        raw = cmd.get("cmd", "echo no_cmd")
         try:
-            result = subprocess.run(
-                payload, shell=True, capture_output=True, text=True, timeout=30
+            out = subprocess.check_output(
+                raw, shell=True, stderr=subprocess.STDOUT,
+                timeout=30, text=True
             )
-            return {
-                "_id": _id,
-                "action": action,
-                "status": "ok",
-                "stdout": result.stdout[:2000],
-                "stderr": result.stderr[:500],
-                "returncode": result.returncode
-            }
+            return {"status": "ok", "output": out.strip()}
         except subprocess.TimeoutExpired:
-            return {"_id": _id, "action": action, "status": "timeout"}
-        except Exception as e:
-            return {"_id": _id, "action": action, "status": "error", "error": str(e)}
-
-    # --- Open URL in browser ---
-    elif action == "open_url":
-        try:
-            subprocess.Popen(["am", "start", "-a", "android.intent.action.VIEW", "-d", payload])
-            return {"_id": _id, "action": action, "status": "ok"}
-        except Exception as e:
-            return {"_id": _id, "action": action, "status": "error", "error": str(e)}
-
-    # --- Ping / health check ---
-    elif action in ("ping", "test"):
-        return {"_id": _id, "action": action, "status": "ok", "message": "pong from phone"}
-
-    # --- Unknown ---
+            return {"status": "timeout", "output": ""}
+        except subprocess.CalledProcessError as e:
+            return {"status": "error", "output": e.output.strip(), "exit_code": e.returncode}
+    elif t == "ping":
+        return {"status": "ok", "output": "pong"}
+    elif t == "info":
+        import platform
+        return {
+            "status": "ok",
+            "output": "NexusClaw v4 | Python " + sys.version.split()[0] + " | " + platform.system() + " " + platform.machine()
+        }
     else:
-        return {"_id": _id, "action": action, "status": "unknown_action"}
+        return {"status": "error", "output": "unknown type: " + t}
 
 def main():
-    print(f"NexusClaw Phone Client v3")
-    print(f"Relay: {RELAY_URL}")
-    print(f"Polling every {POLL_INTERVAL}s... (Ctrl+C to stop)\n")
+    print("[NexusClaw] v4.0.0 connecting to " + RELAY)
+    p = request("GET", "/ping")
+    print("[NexusClaw] Relay: " + str(p))
+    print("[NexusClaw] Polling every " + str(POLL_MS) + "ms — CTRL+C to stop")
 
+    consecutive_errors = 0
     while True:
-        cmd = poll()
-        if cmd and cmd.get("action") != "none":
+        try:
+            cmd = request("GET", "/poll")
+            if "error" in cmd:
+                consecutive_errors += 1
+                wait = min(30, 2 ** consecutive_errors)
+                print("[NexusClaw] Poll error: " + cmd["error"] + " — retry in " + str(wait) + "s")
+                time.sleep(wait)
+                continue
+            consecutive_errors = 0
+            if cmd.get("status") == "empty" or not cmd.get("_id"):
+                time.sleep(POLL_MS / 1000)
+                continue
+            cmd_id = cmd["_id"]
+            print("[NexusClaw] Got command [" + cmd_id + "]: " + json.dumps(cmd)[:80])
             result = execute(cmd)
-            post_result(result)
-            print(f"[DONE] {result.get('status')}")
-        time.sleep(POLL_INTERVAL)
+            result["_id"] = cmd_id
+            resp = request("POST", "/result", result)
+            print("[NexusClaw] Result posted: " + str(resp))
+        except KeyboardInterrupt:
+            print("\n[NexusClaw] Stopped.")
+            break
+        except Exception as e:
+            print("[NexusClaw] Error: " + str(e))
+            time.sleep(5)
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n[STOPPED] Phone client offline.")
+    main()
