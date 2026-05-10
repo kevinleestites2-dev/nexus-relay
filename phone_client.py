@@ -21,7 +21,7 @@ import websocket
 
 # ── Config ─────────────────────────────────────────────────────────────────
 # Update RELAY_URL after Railway deployment
-RELAY_URL    = "wss://nexus-relay-production.up.railway.app/phone"
+RELAY_URL    = "wss://nexus-relay-production.up.railway.app/phone"  # ✅ LIVE
 NEXUSCLAW    = "http://localhost:7474"
 RECONNECT_S  = 5   # seconds between reconnect attempts
 
