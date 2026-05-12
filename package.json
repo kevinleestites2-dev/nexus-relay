@@ -1,13 +1,14 @@
 {
   "name": "nexus-relay",
-  "version": "4.0.0",
-  "description": "NexusClaw Bridge — Full Duplex HTTP relay for Ghost Operator mode",
+  "version": "5.0.0",
+  "description": "NexusClaw Bridge — WebSocket + HTTP Full Duplex Ghost Operator Bridge",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "ws": "^8.17.0"
   },
   "engines": {
     "node": ">=18"
